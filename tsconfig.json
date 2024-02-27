@@ -1,0 +1,11 @@
+{
+    "compilerOptions": {
+        "strict": true,
+        "outFile": "furple.js",
+        "target": "ESNext",
+        "lib": ["ESNext", "DOM"],
+        "declaration": true,
+    },
+    "include": ["src/**/*"],
+    "exclude": ["src/config-debug.d.ts"],
+}
