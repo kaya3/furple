@@ -1300,27 +1300,30 @@ var Furple;
     function _reportDependencyCycle(root) {
         const map = new Map();
         const q = [root];
-        while (q.length > 0) {
+        while (true) {
             const current = q.shift();
+            if (current === undefined) {
+                throw new AssertionError(`Expected to report cycle, but no cycle was found!`, root);
+            }
             _forEachParent(current.rule, parent => {
-                if (map.has(parent)) {
-                    return;
+                if (parent === root) {
+                    const cycle = [];
+                    let cur = current;
+                    while (cur !== undefined) {
+                        cycle.push(cur);
+                        cur = map.get(cur);
+                    }
+                    cycle.reverse();
+                    const message = 'Circular dependency:\n---\n' + cycle.map(node => node.name ?? '<anonymous>').join('\n');
+                    console.error(message, cycle);
+                    throw new Error(`${message}\n---\nSee console for more details`);
                 }
-                map.set(parent, current);
-                if (parent !== root) {
-                    return;
+                else if (!map.has(parent)) {
+                    q.push(parent);
+                    map.set(parent, current);
                 }
-                const cycle = [];
-                let cur = current;
-                while (cur !== undefined) {
-                    cycle.push(cur);
-                    cur = map.get(cur);
-                }
-                console.error(`Circular dependency:`, cycle);
-                throw new Error(`Circular dependency - see console for details`);
             });
         }
-        throw new AssertionError(`Expected to report cycle, but no cycle was found!`, root);
     }
     class AssertionError extends Error {
         data;

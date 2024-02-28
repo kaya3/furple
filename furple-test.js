@@ -37,11 +37,10 @@ Punyt.test(class ConnectTest {
     }
     dependencyCycle() {
         const frp = Furple.engine();
-        const sink = frp.sink();
-        const mapped = sink.map(x => x + 1);
-        Assert.throws(() => {
-            sink.connect(mapped);
-        }, 'Connecting sink in a cycle should throw an error');
+        const sink = frp.sink().named('sink');
+        const mapped = sink.map(x => x + 1).named('mapped');
+        const filtered = mapped.filter(x => x > 0).named('filtered');
+        Assert.throwsLike(() => sink.connect(filtered), (e) => e instanceof Error && /sink[^]+filtered[^]+mapped/.test(e.message), 'Connecting sink in a cycle should throw an error');
     }
 });
 Punyt.test(class FlattenTest {
