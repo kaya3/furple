@@ -1524,13 +1524,17 @@ namespace Furple {
             }
         };
         
-        const node = cell as Node<unknown>,
-            stored = window.localStorage.getItem(key);
-        if(stored !== null) {
-            node.send(conv.fromStr(stored));
-            node.listen(setter);
-        } else {
-            node.observe(setter);
+        try {
+            const node = cell as Node<unknown>,
+                stored = window.localStorage.getItem(key);
+            if(stored !== null) {
+                node.send(conv.fromStr(stored));
+                node.listen(setter);
+            } else {
+                node.observe(setter);
+            }
+        } catch(e: unknown) {
+            console.warn(`Failed to load '${key}' from local storage`);
         }
     }
     

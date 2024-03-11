@@ -1231,13 +1231,18 @@ var Furple;
                 console.error(`Failed to store '${key}' in local storage`, e);
             }
         };
-        const node = cell, stored = window.localStorage.getItem(key);
-        if (stored !== null) {
-            node.send(conv.fromStr(stored));
-            node.listen(setter);
+        try {
+            const node = cell, stored = window.localStorage.getItem(key);
+            if (stored !== null) {
+                node.send(conv.fromStr(stored));
+                node.listen(setter);
+            }
+            else {
+                node.observe(setter);
+            }
         }
-        else {
-            node.observe(setter);
+        catch (e) {
+            console.warn(`Failed to load '${key}' from local storage`);
         }
     }
     Furple.persist = persist;
