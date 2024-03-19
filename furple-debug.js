@@ -115,14 +115,16 @@ var Furple;
     function _forEachNotifiableParent(rule, f) {
         switch (rule.kind) {
             case 0 /* RuleKind.CLOSED */:
-            case 16 /* RuleKind.BRANCH_ON */:
+            case 17 /* RuleKind.BRANCH_ON_C */:
+            case 18 /* RuleKind.BRANCH_ON_S */:
                 return;
             case 1 /* RuleKind.SINK */: {
                 return _forEachSinkParent(rule, f);
             }
             case 2 /* RuleKind.LISTENER */:
             case 3 /* RuleKind.COPY */:
-            case 15 /* RuleKind.BRANCH */:
+            case 15 /* RuleKind.BRANCH_C */:
+            case 16 /* RuleKind.BRANCH_S */:
             case 6 /* RuleKind.FOLD */:
             case 4 /* RuleKind.MAP */:
             case 5 /* RuleKind.FILTER */:
@@ -155,7 +157,7 @@ var Furple;
                 return _forEachSelectParent(rule, f);
             }
             case 9 /* RuleKind.MERGE */:
-            case 17 /* RuleKind.FLATTEN */: {
+            case 19 /* RuleKind.FLATTEN */: {
                 const parent1 = rule.parent1.deref(), parent2 = rule.parent2?.deref();
                 if (parent1 !== undefined) {
                     if (f(parent1) === BREAK) {
@@ -173,7 +175,8 @@ var Furple;
     }
     function _forEachNonNotifiableParent(rule, f) {
         switch (rule.kind) {
-            case 16 /* RuleKind.BRANCH_ON */: {
+            case 17 /* RuleKind.BRANCH_ON_C */:
+            case 18 /* RuleKind.BRANCH_ON_S */: {
                 const parent = rule.parent.deref();
                 if (parent !== undefined) {
                     f(parent);
@@ -210,7 +213,7 @@ var Furple;
         for (const child of parent.nonNotifiableChildren) {
             f(child);
         }
-        if (parent.rule.kind === 15 /* RuleKind.BRANCH */) {
+        if (parent.rule.kind === 15 /* RuleKind.BRANCH_C */ || parent.rule.kind === 16 /* RuleKind.BRANCH_S */) {
             for (const child of parent.rule.f.values()) {
                 f(child);
             }
@@ -304,13 +307,13 @@ var Furple;
             }
         }
         removeNonNotifiableChild(child) {
-            if (child.rule.kind === 16 /* RuleKind.BRANCH_ON */) {
+            if (child.rule.kind === 17 /* RuleKind.BRANCH_ON_C */ || child.rule.kind === 18 /* RuleKind.BRANCH_ON_S */) {
                 // BRANCH_ON nodes don't register themselves as a notifiable dependency
                 if (1 /* Config.DEBUG */) {
                     if (child.rule.parent.deref() !== this) {
                         throw new AssertionError(`BRANCH_ON node tried to deregister from wrong parent`, [this, child]);
                     }
-                    else if (this.rule.kind !== 15 /* RuleKind.BRANCH */ && this.rule.kind !== 0 /* RuleKind.CLOSED */) {
+                    else if (this.rule.kind !== 15 /* RuleKind.BRANCH_C */ && this.rule.kind !== 16 /* RuleKind.BRANCH_S */ && this.rule.kind !== 0 /* RuleKind.CLOSED */) {
                         throw new AssertionError(`BRANCH_ON node has non-BRANCH node as parent`, child);
                     }
                 }
@@ -462,6 +465,9 @@ var Furple;
         gate(p) {
             return this.filter(() => p.sample());
         }
+        gateLive(p) {
+            return this.snapLive(p, (s, p) => p ? s : Furple.DO_NOT_SEND);
+        }
         merge(otherStream, f) {
             const self = this, other = otherStream;
             if (self.isClosed()) {
@@ -504,21 +510,33 @@ var Furple;
             return _snapAll(this, cells, true, f);
         }
         when(key) {
-            if (1 /* Config.DEBUG */ && this.rule.kind !== 0 /* RuleKind.CLOSED */ && this.rule.kind !== 15 /* RuleKind.BRANCH */) {
-                throw new AssertionError(`Cannot branch on non-BRANCH node`, this);
-            }
-            const rule = this.rule, v = this.value === IS_STREAM ? IS_STREAM : this.value === key;
-            if (rule.kind === 15 /* RuleKind.BRANCH */) {
-                let node = rule.f.get(key);
-                if (node === undefined) {
-                    node = new Node({ kind: 16 /* RuleKind.BRANCH_ON */, engine: rule.engine, parent: new WeakRef(this), key }, v);
-                    rule.f.set(key, node);
+            const rule = this.rule;
+            switch (rule.kind) {
+                case 0 /* RuleKind.CLOSED */: {
+                    return this.value !== IS_STREAM
+                        ? constant(this.value === key)
+                        : Furple.NEVER;
                 }
-                return node;
+                case 15 /* RuleKind.BRANCH_C */: {
+                    const self = this;
+                    let node = rule.f.get(key);
+                    if (node === undefined) {
+                        node = new Node({ kind: 17 /* RuleKind.BRANCH_ON_C */, engine: rule.engine, parent: new WeakRef(self), key }, this.value === key);
+                        rule.f.set(key, node);
+                    }
+                    return node;
+                }
+                case 16 /* RuleKind.BRANCH_S */: {
+                    const self = this;
+                    let node = rule.f.get(key);
+                    if (node === undefined) {
+                        node = new Node({ kind: 18 /* RuleKind.BRANCH_ON_S */, engine: rule.engine, parent: new WeakRef(self), key }, IS_STREAM);
+                        rule.f.set(key, node);
+                    }
+                    return node;
+                }
             }
-            else {
-                return v !== IS_STREAM ? constant(v) : Furple.NEVER;
-            }
+            throw new AssertionError(`Cannot branch on non-BRANCH node`, this);
         }
     }
     const DONT_FREEZE = [
@@ -676,7 +694,8 @@ var Furple;
             const rule = node.rule;
             switch (rule.kind) {
                 case 0 /* RuleKind.CLOSED */:
-                case 16 /* RuleKind.BRANCH_ON */:
+                case 17 /* RuleKind.BRANCH_ON_C */:
+                case 18 /* RuleKind.BRANCH_ON_S */:
                     throw new AssertionError(`This node should not be recomputed`, node);
                 case 1 /* RuleKind.SINK */: {
                     if (rule.parents === undefined) {
@@ -740,9 +759,7 @@ var Furple;
                     }
                     if (1 /* Config.DEBUG */) {
                         _assertUpdated(stream);
-                        if (node.value === IS_STREAM) {
-                            throw new AssertionError(`Fold node should have value`, node);
-                        }
+                        _assertCell(node);
                     }
                     return rule.f(node.value, stream.newValue);
                 }
@@ -841,7 +858,7 @@ var Furple;
                     const args = rule.cells.map(_mostRecentValue);
                     return rule.f(stream.newValue, ...args);
                 }
-                case 15 /* RuleKind.BRANCH */: {
+                case 15 /* RuleKind.BRANCH_C */: {
                     const parent = rule.parent.deref();
                     if (parent === undefined) {
                         _closeNode(node);
@@ -850,27 +867,33 @@ var Furple;
                     if (1 /* Config.DEBUG */) {
                         _assertUpdated(parent);
                     }
-                    const newValue = parent.newValue;
-                    if (parent.value !== IS_STREAM) {
-                        // update two boolean cells
-                        const notifyOld = rule.f.get(parent.value), notifyNew = rule.f.get(newValue);
-                        if (notifyOld !== undefined) {
-                            this.#doSend(notifyOld, false);
-                        }
-                        if (notifyNew !== undefined) {
-                            this.#doSend(notifyNew, true);
-                        }
+                    // update two boolean cells
+                    const newValue = parent.newValue, notifyOld = rule.f.get(parent.value), notifyNew = rule.f.get(newValue);
+                    if (notifyOld !== undefined) {
+                        this.#doSend(notifyOld, false);
                     }
-                    else {
-                        // update just one stream
-                        const notify = rule.f.get(newValue);
-                        if (notify !== undefined) {
-                            this.#doSend(notify, newValue);
-                        }
+                    if (notifyNew !== undefined) {
+                        this.#doSend(notifyNew, true);
                     }
                     return newValue;
                 }
-                case 17 /* RuleKind.FLATTEN */: {
+                case 16 /* RuleKind.BRANCH_S */: {
+                    const parent = rule.parent.deref();
+                    if (parent === undefined) {
+                        _closeNode(node);
+                        return Furple.DO_NOT_SEND;
+                    }
+                    if (1 /* Config.DEBUG */) {
+                        _assertUpdated(parent);
+                    }
+                    // update just one stream
+                    const newValue = parent.newValue, notify = rule.f.get(newValue);
+                    if (notify !== undefined) {
+                        this.#doSend(notify, newValue);
+                    }
+                    return newValue;
+                }
+                case 19 /* RuleKind.FLATTEN */: {
                     const container = rule.parent1.deref();
                     if (container === undefined) {
                         node.rule = rule.parent2 !== undefined
@@ -1197,12 +1220,12 @@ var Furple;
     }
     Furple.select = select;
     function branch(of) {
-        const node = of;
-        const engine = node.rule.engine;
+        const node = of, engine = node.rule.engine;
         if (engine === undefined) {
             return node;
         }
-        return new Node({ kind: 15 /* RuleKind.BRANCH */, engine, parent: new WeakRef(node), f: new Map() }, node.value);
+        const kind = node.value !== IS_STREAM ? 15 /* RuleKind.BRANCH_C */ : 16 /* RuleKind.BRANCH_S */;
+        return new Node({ kind, engine, parent: new WeakRef(node), f: new Map() }, node.value);
     }
     Furple.branch = branch;
     function flatten(cell) {
@@ -1214,7 +1237,7 @@ var Furple;
             throw new AssertionError(`Inner value must be cell or stream`, nested);
         }
         const rule = {
-            kind: 17 /* RuleKind.FLATTEN */,
+            kind: 19 /* RuleKind.FLATTEN */,
             engine,
             parent1: new WeakRef(node),
             parent2: nested !== undefined ? new WeakRef(nested) : undefined,

@@ -151,12 +151,22 @@ namespace Furple {
         filter(f: (x: T) => boolean): Stream<T>;
         
         /**
-         * Constructors a new FRP stream which fires when this stream fires, as
-         * long as the given cell contains the value `true`.
+         * Constructs a new FRP stream which fires when this stream fires, as
+         * long as the given cell contains the value `true`. If the cell's
+         * value changes in the same transaction, the old value is used.
          * 
          * This is equivalent to `.filter(() => p.sample())`.
          */
         gate(p: Cell<boolean>): Stream<T>;
+        
+        /**
+         * Constructs a new FRP stream which fires when this stream fires, as
+         * long as the given cell contains the value `true`. If the cell's
+         * value changes in the same transaction, the new value is used.
+         * 
+         * This is equivalent to `.snapLive(p, (s, p) => p ? s : DO_NOT_SEND)`.
+         */
+        gateLive(p: Cell<boolean>): Stream<T>;
         
         /**
          * Constructs a new FRP stream which fires whenever either this stream

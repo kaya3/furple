@@ -94,39 +94,50 @@ namespace Furple {
         SNAPSHOT_ALL_LIVE,
         
         /**
-         * Either:
-         * - A cell which may have multiple `BRANCH_ON` child cells, each of
-         *   which is equivalent to a `MAP` of the form `v => v === w` for some
-         *   constant `w`.
-         * - A stream which may have multiple `BRANCH_ON` child streams, each
-         *   of which is equivalent to a `FILTER` of the form `v => v === w`
-         *   for some constant `w`.
+         * A cell which may have multiple `BRANCH_ON_C` child cells, each of
+         * which is equivalent to a `MAP` of the form `v => v === w` for some
+         * constant `w`.
          * 
          * This exists as an optimisation, when one node would have many such
          * children, so that it does not have to notify every child on every
          * new value.
          */
-        BRANCH,
+        BRANCH_C,
         
         /**
-         * Either:
-         * - A cell which is equivalent to a `MAP` of the form `v => v === w`
-         *   for some constant `w`.
-         * - A stream which is equivalent to a `FILTER` of the form
-         *   `v => v === w` for some constant `w`.
+         * A stream which may have multiple `BRANCH_ON_S` child streams, each
+         * of which is equivalent to a `FILTER` of the form `v => v === w`
+         * for some constant `w`.
          * 
-         * The parent node must be a `BRANCH`.
+         * This exists as an optimisation, when one node would have many such
+         * children, so that it does not have to notify every child on every
+         * new value.
          */
-        BRANCH_ON,
+        BRANCH_S,
+        
+        /**
+         * A cell which is equivalent to a `MAP` of the form `v => v === w`
+         * for some constant `w`.
+         * 
+         * The parent node must be a `BRANCH_C`.
+         */
+        BRANCH_ON_C,
+        
+        /**
+         * A stream which is equivalent to a `FILTER` of the form
+         * `v => v === w` for some constant `w`.
+         * 
+         * The parent node must be a `BRANCH_S`.
+         */
+        BRANCH_ON_S,
         
         /**
          * Either:
          * - A cell whose parent is a cell containing either a nested cell, or
          *   the value `undefined`. This cell's value is the nested value, or
          *   `undefined`, respectively.
-         * - A stream whose parent is a cell containing either a nested stream,
-         *   or the value `undefined`. This stream fires when the nested stream
-         *   fires, if there is one.
+         * - A stream whose parent is a cell containing a nested stream. This
+         *   stream fires when the nested stream fires.
          */
         FLATTEN,
     }
@@ -203,8 +214,10 @@ namespace Furple {
             | {kind: RuleKind.SNAPSHOT_ALL, engine: Engine, parent: WeakParentStream, cells: readonly SnapshotCell[], f: (...args: any) => T | DoNotSend}
             | {kind: RuleKind.SNAPSHOT_LIVE, engine: Engine, parent: WeakParentStream, cell: ParentCell, f: (a: any, b: any) => T | DoNotSend}
             | {kind: RuleKind.SNAPSHOT_ALL_LIVE, engine: Engine, parent: WeakParentStream, cells: readonly ParentCell[], f: (...args: any) => T | DoNotSend}
-            | {kind: RuleKind.BRANCH, engine: Engine, parent: WeakParent<T>, f: Map<T, Node<unknown>>}
-            | {kind: RuleKind.BRANCH_ON, engine: Engine, parent: WeakParent, key: unknown}
+            | {kind: RuleKind.BRANCH_C, engine: Engine, parent: WeakParentCell<T>, f: Map<T, Node<boolean>>}
+            | {kind: RuleKind.BRANCH_S, engine: Engine, parent: WeakParentStream<T>, f: Map<T, Node<T>>}
+            | {kind: RuleKind.BRANCH_ON_C, engine: Engine, parent: WeakParentCell, key: unknown}
+            | {kind: RuleKind.BRANCH_ON_S, engine: Engine, parent: WeakParentStream<T>, key: unknown}
         > | FlattenRule<T>
     ), {kind: K}>
     
@@ -215,8 +228,8 @@ namespace Furple {
         parent2: WeakParent<T> | undefined,
     }
     
-    type CellRuleKind = RuleKind.CLOSED | RuleKind.SINK | RuleKind.COPY | RuleKind.MAP | RuleKind.FOLD | RuleKind.LIFT | RuleKind.LIFT_ALL | RuleKind.BRANCH | RuleKind.BRANCH_ON | RuleKind.FLATTEN
-    type StreamRuleKind = RuleKind.CLOSED | RuleKind.SINK | RuleKind.LISTENER | RuleKind.COPY | RuleKind.MAP | RuleKind.FOLD | RuleKind.FILTER | RuleKind.MERGE | RuleKind.SELECT | RuleKind.SNAPSHOT | RuleKind.SNAPSHOT_ALL | RuleKind.SNAPSHOT_LIVE | RuleKind.SNAPSHOT_ALL_LIVE | RuleKind.BRANCH | RuleKind.BRANCH_ON | RuleKind.FLATTEN
+    type CellRuleKind = RuleKind.CLOSED | RuleKind.SINK | RuleKind.COPY | RuleKind.MAP | RuleKind.FOLD | RuleKind.LIFT | RuleKind.LIFT_ALL | RuleKind.BRANCH_C | RuleKind.BRANCH_ON_C | RuleKind.FLATTEN
+    type StreamRuleKind = RuleKind.CLOSED | RuleKind.SINK | RuleKind.LISTENER | RuleKind.COPY | RuleKind.MAP | RuleKind.FOLD | RuleKind.FILTER | RuleKind.MERGE | RuleKind.SELECT | RuleKind.SNAPSHOT | RuleKind.SNAPSHOT_ALL | RuleKind.SNAPSHOT_LIVE | RuleKind.SNAPSHOT_ALL_LIVE | RuleKind.BRANCH_S | RuleKind.BRANCH_ON_S | RuleKind.FLATTEN
     
     type CellRule<T> = Rule<T, CellRuleKind>
     type StreamRule<T> = Rule<T, StreamRuleKind>
@@ -265,7 +278,8 @@ namespace Furple {
     function _forEachNotifiableParent<T>(rule: Rule<T>, f: (x: Parent) => void | Break): void | Break {
         switch(rule.kind) {
             case RuleKind.CLOSED:
-            case RuleKind.BRANCH_ON:
+            case RuleKind.BRANCH_ON_C:
+            case RuleKind.BRANCH_ON_S:
                 return;
             
             case RuleKind.SINK: {
@@ -274,7 +288,8 @@ namespace Furple {
             
             case RuleKind.LISTENER:
             case RuleKind.COPY:
-            case RuleKind.BRANCH:
+            case RuleKind.BRANCH_C:
+            case RuleKind.BRANCH_S:
             case RuleKind.FOLD:
             case RuleKind.MAP:
             case RuleKind.FILTER:
@@ -324,7 +339,8 @@ namespace Furple {
     
     function _forEachNonNotifiableParent<T>(rule: Rule<T>, f: (x: Parent) => void | Break): void {
         switch(rule.kind) {
-            case RuleKind.BRANCH_ON: {
+            case RuleKind.BRANCH_ON_C:
+            case RuleKind.BRANCH_ON_S: {
                 const parent = rule.parent.deref();
                 if(parent !== undefined) { f(parent); }
                 return;
@@ -360,7 +376,7 @@ namespace Furple {
             f(child as Node<unknown>);
         }
         
-        if(parent.rule.kind === RuleKind.BRANCH) {
+        if(parent.rule.kind === RuleKind.BRANCH_C || parent.rule.kind === RuleKind.BRANCH_S) {
             for(const child of parent.rule.f.values()) {
                 f(child as Node<unknown>);
             }
@@ -412,6 +428,7 @@ namespace Furple {
         constructor(rule: CellRule<T>, value: T);
         constructor(rule: StreamRule<T>, value: IsStream);
         constructor(rule: Rule<T, CellRuleKind & StreamRuleKind>, value: T | IsStream);
+        constructor(rule: Rule<T, RuleKind.BRANCH_C | RuleKind.BRANCH_S>, value: T | IsStream);
         constructor(
             public rule: Rule<T>,
             // using a default `value = IS_STREAM` here is wrong, because an
@@ -477,17 +494,17 @@ namespace Furple {
         }
         
         removeNonNotifiableChild<U>(child: Node<U>): void {
-            if(child.rule.kind === RuleKind.BRANCH_ON) {
+            if(child.rule.kind === RuleKind.BRANCH_ON_C || child.rule.kind === RuleKind.BRANCH_ON_S) {
                 // BRANCH_ON nodes don't register themselves as a notifiable dependency
                 if(Config.DEBUG) {
                     if(child.rule.parent.deref() !== this) {
                         throw new AssertionError(`BRANCH_ON node tried to deregister from wrong parent`, [this, child]);
-                    } else if(this.rule.kind !== RuleKind.BRANCH && this.rule.kind !== RuleKind.CLOSED) {
+                    } else if(this.rule.kind !== RuleKind.BRANCH_C && this.rule.kind !== RuleKind.BRANCH_S && this.rule.kind !== RuleKind.CLOSED) {
                         throw new AssertionError(`BRANCH_ON node has non-BRANCH node as parent`, child);
                     }
                 }
                 
-                const parentRule = this.rule as Rule<unknown, RuleKind.BRANCH>;
+                const parentRule = this.rule as Rule<unknown, RuleKind.BRANCH_C | RuleKind.BRANCH_S>;
                 parentRule.f.delete(child.rule.key);
             } else {
                 const children = this.nonNotifiableChildren;
@@ -653,6 +670,10 @@ namespace Furple {
             return this.filter(() => p.sample());
         }
         
+        public gateLive(p: Cell<boolean>): Stream<T> {
+            return this.snapLive(p, (s, p) => p ? s : DO_NOT_SEND);
+        }
+        
         public merge<U>(otherStream: Stream<U>, f: (a: T, b: U) => T | U): Stream<T | U> {
             const self = this as StreamNode<T>,
                 other = otherStream as StreamNode<U>;
@@ -717,23 +738,35 @@ namespace Furple {
         public when(key: T): Cell<boolean>;
         public when(key: T): Stream<T>;
         public when(key: T): Cell<boolean> | Stream<T> {
-            if(Config.DEBUG && this.rule.kind !== RuleKind.CLOSED && this.rule.kind !== RuleKind.BRANCH) {
-                throw new AssertionError(`Cannot branch on non-BRANCH node`, this);
-            }
+            const rule = this.rule;
             
-            const rule = this.rule,
-                v = this.value === IS_STREAM ? IS_STREAM : this.value === key;
-            
-            if(rule.kind === RuleKind.BRANCH) {
-                let node = rule.f.get(key);
-                if(node === undefined) {
-                    node = new Node<unknown>({kind: RuleKind.BRANCH_ON, engine: rule.engine, parent: new WeakRef(this), key}, v);
-                    rule.f.set(key, node);
+            switch(rule.kind) {
+                case RuleKind.CLOSED: {
+                    return this.value !== IS_STREAM
+                        ? constant(this.value === key)
+                        : NEVER;
                 }
-                return node as Node<T>;
-            } else {
-                return v !== IS_STREAM ? constant(v) : NEVER;
+                case RuleKind.BRANCH_C: {
+                    const self = this as CellNode<T>;
+                    let node = rule.f.get(key);
+                    if(node === undefined) {
+                        node = new Node({kind: RuleKind.BRANCH_ON_C, engine: rule.engine, parent: new WeakRef(self), key}, this.value === key);
+                        rule.f.set(key, node);
+                    }
+                    return node;
+                }
+                case RuleKind.BRANCH_S: {
+                    const self = this as StreamNode<T>;
+                    let node = rule.f.get(key);
+                    if(node === undefined) {
+                        node = new Node<T>({kind: RuleKind.BRANCH_ON_S, engine: rule.engine, parent: new WeakRef(self), key}, IS_STREAM);
+                        rule.f.set(key, node);
+                    }
+                    return node;
+                }
             }
+            
+            throw new AssertionError(`Cannot branch on non-BRANCH node`, this);
         }
     }
     
@@ -913,7 +946,8 @@ namespace Furple {
             
             switch(rule.kind) {
                 case RuleKind.CLOSED:
-                case RuleKind.BRANCH_ON:
+                case RuleKind.BRANCH_ON_C:
+                case RuleKind.BRANCH_ON_S:
                     throw new AssertionError(`This node should not be recomputed`, node);
                 
                 case RuleKind.SINK: {
@@ -966,9 +1000,7 @@ namespace Furple {
                     if(stream === undefined) { _closeNode(node); return DO_NOT_SEND; }
                     if(Config.DEBUG) {
                         _assertUpdated(stream);
-                        if(node.value === IS_STREAM) {
-                            throw new AssertionError(`Fold node should have value`, node);
-                        }
+                        _assertCell(node);
                     }
                     
                     return rule.f(node.value as T, stream.newValue);
@@ -1055,30 +1087,36 @@ namespace Furple {
                     return rule.f(stream.newValue, ...args);
                 }
                 
-                case RuleKind.BRANCH: {
+                case RuleKind.BRANCH_C: {
                     const parent = rule.parent.deref();
                     if(parent === undefined) { _closeNode(node); return DO_NOT_SEND; }
                     if(Config.DEBUG) { _assertUpdated(parent); }
                     
-                    const newValue = parent.newValue as T;
-                    if(parent.value !== IS_STREAM) {
-                        // update two boolean cells
-                        const notifyOld = rule.f.get(parent.value),
-                            notifyNew = rule.f.get(newValue);
-                        if(notifyOld !== undefined) {
-                            this.#doSend(notifyOld, false);
-                        }
-                        if(notifyNew !== undefined) {
-                            this.#doSend(notifyNew, true);
-                        }
-                    } else {
-                        // update just one stream
-                        const notify = rule.f.get(newValue);
-                        if(notify !== undefined) {
-                            this.#doSend(notify, newValue);
-                        }
+                    // update two boolean cells
+                    const newValue = parent.newValue as T,
+                        notifyOld = rule.f.get(parent.value),
+                        notifyNew = rule.f.get(newValue);
+                    if(notifyOld !== undefined) {
+                        this.#doSend(notifyOld, false);
                     }
-                
+                    if(notifyNew !== undefined) {
+                        this.#doSend(notifyNew, true);
+                    }
+                    
+                    return newValue;
+                }
+                case RuleKind.BRANCH_S: {
+                    const parent = rule.parent.deref();
+                    if(parent === undefined) { _closeNode(node); return DO_NOT_SEND; }
+                    if(Config.DEBUG) { _assertUpdated(parent); }
+                    
+                    // update just one stream
+                    const newValue = parent.newValue as T,
+                        notify = rule.f.get(newValue);
+                    if(notify !== undefined) {
+                        this.#doSend(notify, newValue);
+                    }
+                    
                     return newValue;
                 }
                 
@@ -1338,7 +1376,7 @@ namespace Furple {
         // a cell, but for a fold cell this is safe because the cell's
         // value only changes when the accumulated stream fires
         const acc = _fold(s, initialValue, f),
-            accS = new Node({kind: RuleKind.COPY, engine, parent: new WeakRef(acc)}, IS_STREAM);
+            accS = new Node<U>({kind: RuleKind.COPY, engine, parent: new WeakRef(acc)}, IS_STREAM);
         
         // by copying from a cell, stream events are suppressed when
         // `f(acc, t)` equals `acc` using the given equality function; this
@@ -1461,12 +1499,14 @@ namespace Furple {
     export function branch<T>(cell: Cell<T>): BranchCell<T>;
     export function branch<T>(stream: Stream<T>): BranchStream<T>;
     export function branch<T>(of: Cell<T> | Stream<T>): BranchCell<T> | BranchStream<T> {
-        const node = of as Node<T>;
-        const engine = node.rule.engine;
+        const node = of as Node<T>,
+            engine = node.rule.engine;
         if(engine === undefined) { return node; }
         
+        const kind = node.value !== IS_STREAM ? RuleKind.BRANCH_C : RuleKind.BRANCH_S;
+        
         return new Node<T>(
-            {kind: RuleKind.BRANCH, engine, parent: new WeakRef(node), f: new Map()},
+            {kind, engine, parent: new WeakRef(node) as WeakParentCell<T> & WeakParentStream<T>, f: new Map()},
             node.value,
         );
     }
