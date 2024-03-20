@@ -107,6 +107,12 @@ declare namespace Furple {
     function liftAll<T extends Tuple<Cell<unknown>>, R>(cells: T, f: (...ts: Lift<T>) => R): Cell<R>;
     function liftAll<T, R>(cells: readonly Cell<T>[], f: (...ts: T[]) => R): Cell<R>;
     /**
+     * Creates a new FRP stream which fires whenever all of the given streams
+     * fire simultaneously. The value sent is determined by applying the
+     * given function to the values sent on these streams.
+     */
+    function meetAll<T extends Tuple<Stream>, R>(streams: T, f: (...args: Lift<T>) => R | DoNotSend): Stream<R>;
+    /**
      * Creates a new FRP stream which fires whenever any of the given streams
      * fires. The streams have priority according to the order they are given,
      * so that if multiple fire simultaneously, the value is taken from the
@@ -366,7 +372,7 @@ declare namespace Furple {
          *
          * The function must be pure.
          */
-        merge<U>(otherStream: Stream<U>, f: (a: T, b: U) => T | U): Stream<T | U>;
+        merge<U>(otherStream: Stream<U>, f: (a: T, b: U) => T | U | DoNotSend): Stream<T | U>;
         /**
          * Constructs a new FRP stream which fires whenever either this stream
          * fires, or the other given stream fires, or both. If both streams
@@ -386,6 +392,12 @@ declare namespace Furple {
          * This is equivalent to `merge` with the function `(a, b) => { throw ...; }`.
          */
         mergeMutex<U>(otherStream: Stream<U>): Stream<T | U>;
+        /**
+         * Constructs a new FRP stream which fires whenever both this and the
+         * other stream fire simultaneously. The value sent is determined by
+         * applying the given function to the values sent on these two streams.
+         */
+        meet<U, R>(otherStream: Stream<U>, f: (t: T, u: U) => R | DoNotSend): Stream<R>;
         /**
          * Constructs a new FRP stream which fires whenever this stream fires,
          * with a value determined by applying the given function to the value
@@ -456,9 +468,9 @@ declare namespace Furple {
     }
     interface BranchCell<in out T> extends Cell<T> {
         /**
-         * Constructs a new FRP cell which fires whenever this stream fires
-         * with the given value. This is equivalent to `.map(x => x === v)`,
-         * but is more efficient when the cell has many branches.
+         * Constructs a new FRP cell which is true if and only if this cell has
+         * the given value. This is equivalent to `.map(x => x === v)`, but is
+         * more efficient when the cell has many branches.
          */
         when(value: T): Cell<boolean>;
     }
@@ -559,7 +571,7 @@ declare namespace Furple {
     /**
      * Lifts a tuple of cells to a tuple of their content types.
      */
-    type Lift<T extends Tuple<Cell<unknown>>> = {
+    type Lift<T extends Tuple<Cell<unknown> | Stream<unknown>>> = {
         [I in keyof T]: T[I] extends Cell<infer U> ? U : never;
     };
 }

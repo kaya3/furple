@@ -100,38 +100,50 @@ var Furple;
         const parents = rule.parents;
         for (let i = 0; i < parents.length;) {
             const parent = parents[i].deref();
-            if (parent !== undefined) {
+            if (parent === undefined) {
+                // delete preserving order
+                parents.splice(i, 1);
+            }
+            else {
                 if (f(parent) === BREAK) {
                     return BREAK;
                 }
                 ++i;
             }
-            else {
-                // delete preserving order
-                parents.splice(i, 1);
+        }
+    }
+    function _forEachMeetAllParent(rule, f, _thenClose) {
+        for (const weakParent of rule.parents) {
+            const parent = weakParent.deref();
+            if (parent === undefined) {
+                _thenClose?.();
+                return;
+            }
+            else if (f(parent) === BREAK) {
+                return BREAK;
             }
         }
     }
     function _forEachNotifiableParent(rule, f) {
         switch (rule.kind) {
             case 0 /* RuleKind.CLOSED */:
-            case 17 /* RuleKind.BRANCH_ON_C */:
-            case 18 /* RuleKind.BRANCH_ON_S */:
+            case 19 /* RuleKind.BRANCH_ON_C */:
+            case 20 /* RuleKind.BRANCH_ON_S */:
                 return;
             case 1 /* RuleKind.SINK */: {
                 return _forEachSinkParent(rule, f);
             }
             case 2 /* RuleKind.LISTENER */:
             case 3 /* RuleKind.COPY */:
-            case 15 /* RuleKind.BRANCH_C */:
-            case 16 /* RuleKind.BRANCH_S */:
+            case 17 /* RuleKind.BRANCH_C */:
+            case 18 /* RuleKind.BRANCH_S */:
             case 6 /* RuleKind.FOLD */:
             case 4 /* RuleKind.MAP */:
             case 5 /* RuleKind.FILTER */:
-            case 11 /* RuleKind.SNAPSHOT */:
-            case 12 /* RuleKind.SNAPSHOT_ALL */:
-            case 13 /* RuleKind.SNAPSHOT_LIVE */:
-            case 14 /* RuleKind.SNAPSHOT_ALL_LIVE */: {
+            case 13 /* RuleKind.SNAPSHOT */:
+            case 14 /* RuleKind.SNAPSHOT_ALL */:
+            case 15 /* RuleKind.SNAPSHOT_LIVE */:
+            case 16 /* RuleKind.SNAPSHOT_ALL_LIVE */: {
                 // cells are not notifiable parents of snapshots
                 const parent = rule.parent.deref();
                 if (parent !== undefined) {
@@ -153,11 +165,15 @@ var Furple;
                 }
                 return;
             }
-            case 10 /* RuleKind.SELECT */: {
+            case 12 /* RuleKind.SELECT */: {
                 return _forEachSelectParent(rule, f);
             }
+            case 11 /* RuleKind.MEET_ALL */: {
+                return _forEachMeetAllParent(rule, f);
+            }
             case 9 /* RuleKind.MERGE */:
-            case 19 /* RuleKind.FLATTEN */: {
+            case 10 /* RuleKind.MEET */:
+            case 21 /* RuleKind.FLATTEN */: {
                 const parent1 = rule.parent1.deref(), parent2 = rule.parent2?.deref();
                 if (parent1 !== undefined) {
                     if (f(parent1) === BREAK) {
@@ -175,19 +191,19 @@ var Furple;
     }
     function _forEachNonNotifiableParent(rule, f) {
         switch (rule.kind) {
-            case 17 /* RuleKind.BRANCH_ON_C */:
-            case 18 /* RuleKind.BRANCH_ON_S */: {
+            case 19 /* RuleKind.BRANCH_ON_C */:
+            case 20 /* RuleKind.BRANCH_ON_S */: {
                 const parent = rule.parent.deref();
                 if (parent !== undefined) {
                     f(parent);
                 }
                 return;
             }
-            case 13 /* RuleKind.SNAPSHOT_LIVE */: {
+            case 15 /* RuleKind.SNAPSHOT_LIVE */: {
                 f(rule.cell);
                 return;
             }
-            case 14 /* RuleKind.SNAPSHOT_ALL_LIVE */: {
+            case 16 /* RuleKind.SNAPSHOT_ALL_LIVE */: {
                 for (const cell of rule.cells) {
                     if (f(cell) === BREAK) {
                         return;
@@ -213,7 +229,7 @@ var Furple;
         for (const child of parent.nonNotifiableChildren) {
             f(child);
         }
-        if (parent.rule.kind === 15 /* RuleKind.BRANCH_C */ || parent.rule.kind === 16 /* RuleKind.BRANCH_S */) {
+        if (parent.rule.kind === 17 /* RuleKind.BRANCH_C */ || parent.rule.kind === 18 /* RuleKind.BRANCH_S */) {
             for (const child of parent.rule.f.values()) {
                 f(child);
             }
@@ -307,13 +323,13 @@ var Furple;
             }
         }
         removeNonNotifiableChild(child) {
-            if (child.rule.kind === 17 /* RuleKind.BRANCH_ON_C */ || child.rule.kind === 18 /* RuleKind.BRANCH_ON_S */) {
+            if (child.rule.kind === 19 /* RuleKind.BRANCH_ON_C */ || child.rule.kind === 20 /* RuleKind.BRANCH_ON_S */) {
                 // BRANCH_ON nodes don't register themselves as a notifiable dependency
                 if (1 /* Config.DEBUG */) {
                     if (child.rule.parent.deref() !== this) {
                         throw new AssertionError(`BRANCH_ON node tried to deregister from wrong parent`, [this, child]);
                     }
-                    else if (this.rule.kind !== 15 /* RuleKind.BRANCH_C */ && this.rule.kind !== 16 /* RuleKind.BRANCH_S */ && this.rule.kind !== 0 /* RuleKind.CLOSED */) {
+                    else if (this.rule.kind !== 17 /* RuleKind.BRANCH_C */ && this.rule.kind !== 18 /* RuleKind.BRANCH_S */ && this.rule.kind !== 0 /* RuleKind.CLOSED */) {
                         throw new AssertionError(`BRANCH_ON node has non-BRANCH node as parent`, child);
                     }
                 }
@@ -358,20 +374,42 @@ var Furple;
             });
             if (close) {
                 _closeNode(this);
+                return;
             }
-            else if (rule.kind === 9 /* RuleKind.MERGE */) {
-                const parent1 = rule.parent1.deref(), parent2 = rule.parent2.deref();
-                if (parent1 === undefined || parent1.isClosed()) {
-                    this.rule = { kind: 3 /* RuleKind.COPY */, engine: rule.engine, parent: rule.parent2 };
+            switch (rule.kind) {
+                case 9 /* RuleKind.MERGE */: {
+                    const parent1 = rule.parent1.deref(), parent2 = rule.parent2.deref();
+                    if (parent1 === undefined || parent1.isClosed()) {
+                        this.rule = { kind: 3 /* RuleKind.COPY */, engine: rule.engine, parent: rule.parent2 };
+                    }
+                    else if (parent2 === undefined || parent2.isClosed()) {
+                        this.rule = { kind: 3 /* RuleKind.COPY */, engine: rule.engine, parent: rule.parent1 };
+                    }
+                    break;
                 }
-                else if (parent2 === undefined || parent2.isClosed()) {
-                    this.rule = { kind: 3 /* RuleKind.COPY */, engine: rule.engine, parent: rule.parent1 };
+                case 10 /* RuleKind.MEET */: {
+                    const parent1 = rule.parent1.deref(), parent2 = rule.parent2.deref();
+                    if (parent1 === undefined || parent2 === undefined || parent1.isClosed() || parent2.isClosed()) {
+                        _closeNode(this);
+                    }
+                    break;
                 }
-            }
-            else if (rule.kind === 10 /* RuleKind.SELECT */) {
-                // _forEachSelectParent already removed the dropped weakrefs
-                if (rule.parents.length === 1) {
-                    this.rule = { kind: 3 /* RuleKind.COPY */, engine: rule.engine, parent: rule.parents[0] };
+                case 11 /* RuleKind.MEET_ALL */: {
+                    for (const weakParent of rule.parents) {
+                        const parent = weakParent.deref();
+                        if (parent === undefined || parent.isClosed()) {
+                            _closeNode(this);
+                            break;
+                        }
+                    }
+                    break;
+                }
+                case 12 /* RuleKind.SELECT */: {
+                    // _forEachSelectParent already removed the dropped weakrefs
+                    if (rule.parents.length === 1) {
+                        this.rule = { kind: 3 /* RuleKind.COPY */, engine: rule.engine, parent: rule.parents[0] };
+                    }
+                    break;
                 }
             }
         }
@@ -488,6 +526,17 @@ var Furple;
         mergeMutex(otherStream) {
             return this.merge(otherStream, () => { throw new Error('Mutually exclusive streams fired simultaneously'); });
         }
+        meet(otherStream, f) {
+            const self = this, other = otherStream;
+            if (self.isClosed() || other.isClosed()) {
+                return Furple.NEVER;
+            }
+            const engine = _expectEngine(self);
+            if (1 /* Config.DEBUG */) {
+                _assertOwn(engine, self, other);
+            }
+            return new Node({ kind: 10 /* RuleKind.MEET */, engine, parent1: new WeakRef(self), parent2: new WeakRef(other), f }, IS_STREAM);
+        }
         snapshot(c, f) {
             return _snap(this, c, false, f);
         }
@@ -517,20 +566,20 @@ var Furple;
                         ? constant(this.value === key)
                         : Furple.NEVER;
                 }
-                case 15 /* RuleKind.BRANCH_C */: {
+                case 17 /* RuleKind.BRANCH_C */: {
                     const self = this;
                     let node = rule.f.get(key);
                     if (node === undefined) {
-                        node = new Node({ kind: 17 /* RuleKind.BRANCH_ON_C */, engine: rule.engine, parent: new WeakRef(self), key }, this.value === key);
+                        node = new Node({ kind: 19 /* RuleKind.BRANCH_ON_C */, engine: rule.engine, parent: new WeakRef(self), key }, this.value === key);
                         rule.f.set(key, node);
                     }
                     return node;
                 }
-                case 16 /* RuleKind.BRANCH_S */: {
+                case 18 /* RuleKind.BRANCH_S */: {
                     const self = this;
                     let node = rule.f.get(key);
                     if (node === undefined) {
-                        node = new Node({ kind: 18 /* RuleKind.BRANCH_ON_S */, engine: rule.engine, parent: new WeakRef(self), key }, IS_STREAM);
+                        node = new Node({ kind: 20 /* RuleKind.BRANCH_ON_S */, engine: rule.engine, parent: new WeakRef(self), key }, IS_STREAM);
                         rule.f.set(key, node);
                     }
                     return node;
@@ -694,8 +743,8 @@ var Furple;
             const rule = node.rule;
             switch (rule.kind) {
                 case 0 /* RuleKind.CLOSED */:
-                case 17 /* RuleKind.BRANCH_ON_C */:
-                case 18 /* RuleKind.BRANCH_ON_S */:
+                case 19 /* RuleKind.BRANCH_ON_C */:
+                case 20 /* RuleKind.BRANCH_ON_S */:
                     throw new AssertionError(`This node should not be recomputed`, node);
                 case 1 /* RuleKind.SINK */: {
                     if (rule.parents === undefined) {
@@ -797,7 +846,34 @@ var Furple;
                         : s1.newValue === NOT_UPDATED ? s2.newValue
                             : rule.f(s1.newValue, s2.newValue);
                 }
-                case 10 /* RuleKind.SELECT */: {
+                case 10 /* RuleKind.MEET */: {
+                    const s1 = rule.parent1.deref(), s2 = rule.parent2.deref();
+                    if (s1 === undefined || s2 === undefined) {
+                        _closeNode(node);
+                        return Furple.DO_NOT_SEND;
+                    }
+                    if (1 /* Config.DEBUG */) {
+                        _assertUpdated(s1, s2);
+                    }
+                    return s1.newValue !== NOT_UPDATED && s2.newValue !== NOT_UPDATED
+                        ? rule.f(s1.newValue, s2.newValue)
+                        : Furple.DO_NOT_SEND;
+                }
+                case 11 /* RuleKind.MEET_ALL */: {
+                    const args = [];
+                    _forEachMeetAllParent(rule, parent => {
+                        if (parent.newValue === NOT_UPDATED) {
+                            return BREAK;
+                        }
+                        args.push(parent.newValue);
+                    }, () => {
+                        _closeNode(node);
+                    });
+                    return args.length === rule.parents.length
+                        ? rule.f(...args)
+                        : Furple.DO_NOT_SEND;
+                }
+                case 12 /* RuleKind.SELECT */: {
                     let newValue = Furple.DO_NOT_SEND;
                     _forEachSelectParent(rule, parent => {
                         if (parent.newValue !== NOT_UPDATED) {
@@ -810,7 +886,7 @@ var Furple;
                     }
                     return newValue;
                 }
-                case 11 /* RuleKind.SNAPSHOT */: {
+                case 13 /* RuleKind.SNAPSHOT */: {
                     const stream = rule.parent.deref();
                     if (stream === undefined) {
                         _closeNode(node);
@@ -822,7 +898,7 @@ var Furple;
                     // snapshot always sees cell values from the start of the transaction
                     return rule.f(stream.newValue, rule.cell.value);
                 }
-                case 12 /* RuleKind.SNAPSHOT_ALL */: {
+                case 14 /* RuleKind.SNAPSHOT_ALL */: {
                     const stream = rule.parent.deref();
                     if (stream === undefined) {
                         _closeNode(node);
@@ -835,7 +911,7 @@ var Furple;
                     const args = rule.cells.map(c => c.value);
                     return rule.f(stream.newValue, ...args);
                 }
-                case 13 /* RuleKind.SNAPSHOT_LIVE */: {
+                case 15 /* RuleKind.SNAPSHOT_LIVE */: {
                     const stream = rule.parent.deref();
                     if (stream === undefined) {
                         _closeNode(node);
@@ -846,7 +922,7 @@ var Furple;
                     }
                     return rule.f(stream.newValue, _mostRecentValue(rule.cell));
                 }
-                case 14 /* RuleKind.SNAPSHOT_ALL_LIVE */: {
+                case 16 /* RuleKind.SNAPSHOT_ALL_LIVE */: {
                     const stream = rule.parent.deref();
                     if (stream === undefined) {
                         _closeNode(node);
@@ -858,7 +934,7 @@ var Furple;
                     const args = rule.cells.map(_mostRecentValue);
                     return rule.f(stream.newValue, ...args);
                 }
-                case 15 /* RuleKind.BRANCH_C */: {
+                case 17 /* RuleKind.BRANCH_C */: {
                     const parent = rule.parent.deref();
                     if (parent === undefined) {
                         _closeNode(node);
@@ -877,7 +953,7 @@ var Furple;
                     }
                     return newValue;
                 }
-                case 16 /* RuleKind.BRANCH_S */: {
+                case 18 /* RuleKind.BRANCH_S */: {
                     const parent = rule.parent.deref();
                     if (parent === undefined) {
                         _closeNode(node);
@@ -893,7 +969,7 @@ var Furple;
                     }
                     return newValue;
                 }
-                case 19 /* RuleKind.FLATTEN */: {
+                case 21 /* RuleKind.FLATTEN */: {
                     const container = rule.parent1.deref();
                     if (container === undefined) {
                         node.rule = rule.parent2 !== undefined
@@ -1134,7 +1210,7 @@ var Furple;
         if (1 /* Config.DEBUG */) {
             _assertOwn(engine, cell);
         }
-        const kind = live ? 13 /* RuleKind.SNAPSHOT_LIVE */ : 11 /* RuleKind.SNAPSHOT */;
+        const kind = live ? 15 /* RuleKind.SNAPSHOT_LIVE */ : 13 /* RuleKind.SNAPSHOT */;
         return new Node({ kind, engine, parent: new WeakRef(stream), cell, f }, IS_STREAM);
     }
     function _snapAll(s, cs, live, f) {
@@ -1151,7 +1227,7 @@ var Furple;
         if (1 /* Config.DEBUG */) {
             _assertOwn(engine, ...cells);
         }
-        const kind = live ? 14 /* RuleKind.SNAPSHOT_ALL_LIVE */ : 12 /* RuleKind.SNAPSHOT_ALL */;
+        const kind = live ? 16 /* RuleKind.SNAPSHOT_ALL_LIVE */ : 14 /* RuleKind.SNAPSHOT_ALL */;
         return new Node({ kind, engine, parent: new WeakRef(stream), cells, f }, IS_STREAM);
     }
     /**
@@ -1199,6 +1275,24 @@ var Furple;
     }
     Furple.liftAll = liftAll;
     /**
+     * Creates a new FRP stream which fires whenever all of the given streams
+     * fire simultaneously. The value sent is determined by applying the
+     * given function to the values sent on these streams.
+     */
+    function meetAll(streams, f) {
+        const parents = [];
+        for (const s of streams) {
+            const p = s;
+            if (p.isClosed()) {
+                return Furple.NEVER;
+            }
+            parents.push(new WeakRef(p));
+        }
+        const engine = _expectEngine(streams[0]);
+        return new Node({ kind: 11 /* RuleKind.MEET_ALL */, engine, parents, f }, IS_STREAM);
+    }
+    Furple.meetAll = meetAll;
+    /**
      * Creates a new FRP stream which fires whenever any of the given streams
      * fires. The streams have priority according to the order they are given,
      * so that if multiple fire simultaneously, the value is taken from the
@@ -1216,7 +1310,7 @@ var Furple;
         if (1 /* Config.DEBUG */) {
             _assertOwn(engine, ...parents);
         }
-        return new Node({ kind: 10 /* RuleKind.SELECT */, engine, parents: parents.map(p => new WeakRef(p)) }, IS_STREAM);
+        return new Node({ kind: 12 /* RuleKind.SELECT */, engine, parents: parents.map(p => new WeakRef(p)) }, IS_STREAM);
     }
     Furple.select = select;
     function branch(of) {
@@ -1224,7 +1318,7 @@ var Furple;
         if (engine === undefined) {
             return node;
         }
-        const kind = node.value !== IS_STREAM ? 15 /* RuleKind.BRANCH_C */ : 16 /* RuleKind.BRANCH_S */;
+        const kind = node.value !== IS_STREAM ? 17 /* RuleKind.BRANCH_C */ : 18 /* RuleKind.BRANCH_S */;
         return new Node({ kind, engine, parent: new WeakRef(node), f: new Map() }, node.value);
     }
     Furple.branch = branch;
@@ -1237,7 +1331,7 @@ var Furple;
             throw new AssertionError(`Inner value must be cell or stream`, nested);
         }
         const rule = {
-            kind: 19 /* RuleKind.FLATTEN */,
+            kind: 21 /* RuleKind.FLATTEN */,
             engine,
             parent1: new WeakRef(node),
             parent2: nested !== undefined ? new WeakRef(nested) : undefined,
@@ -1287,8 +1381,8 @@ var Furple;
             case 5 /* RuleKind.FILTER */:
             case 6 /* RuleKind.FOLD */:
             case 9 /* RuleKind.MERGE */:
-            case 11 /* RuleKind.SNAPSHOT */:
-            case 12 /* RuleKind.SNAPSHOT_ALL */:
+            case 13 /* RuleKind.SNAPSHOT */:
+            case 14 /* RuleKind.SNAPSHOT_ALL */:
                 return true;
             default:
                 return false;

@@ -63,6 +63,18 @@ namespace Furple {
         MERGE,
         
         /**
+         * A stream which fires when both of its parent streams fire, with a
+         * combined value using a given binary function.
+         */
+        MEET,
+        
+        /**
+         * A stream which fires when all of its parent streams fire, with a
+         * combined value using a given n-aray function.
+         */
+        MEET_ALL,
+        
+        /**
          * A stream which fires when any one of its list of parent streams
          * fires, with the value of its earliest parent in the list.
          */
@@ -208,7 +220,9 @@ namespace Furple {
             | {kind: RuleKind.FOLD, engine: Engine, parent: WeakParentStream, f: (acc: T, delta: any) => T}
             | {kind: RuleKind.LIFT, engine: Engine, parent1: ParentCell, parent2: ParentCell, f: (a: any, b: any) => T}
             | {kind: RuleKind.LIFT_ALL, engine: Engine, parents: readonly ParentCell[], f: (...args: any) => T}
-            | {kind: RuleKind.MERGE, engine: Engine, parent1: WeakParentStream<T>, parent2: WeakParentStream<T>, f: (a: any, b: any) => T}
+            | {kind: RuleKind.MERGE, engine: Engine, parent1: WeakParentStream<T>, parent2: WeakParentStream<T>, f: (a: any, b: any) => T | DoNotSend}
+            | {kind: RuleKind.MEET, engine: Engine, parent1: WeakParentStream, parent2: WeakParentStream, f: (a: any, b: any) => T | DoNotSend}
+            | {kind: RuleKind.MEET_ALL, engine: Engine, parents: WeakParentStream[], f: (...args: any) => T | DoNotSend}
             | {kind: RuleKind.SELECT, engine: Engine, parents: WeakParentStream<T>[]}
             | {kind: RuleKind.SNAPSHOT, engine: Engine, parent: WeakParentStream, cell: SnapshotCell, f: (a: any, b: any) => T | DoNotSend}
             | {kind: RuleKind.SNAPSHOT_ALL, engine: Engine, parent: WeakParentStream, cells: readonly SnapshotCell[], f: (...args: any) => T | DoNotSend}
@@ -229,7 +243,7 @@ namespace Furple {
     }
     
     type CellRuleKind = RuleKind.CLOSED | RuleKind.SINK | RuleKind.COPY | RuleKind.MAP | RuleKind.FOLD | RuleKind.LIFT | RuleKind.LIFT_ALL | RuleKind.BRANCH_C | RuleKind.BRANCH_ON_C | RuleKind.FLATTEN
-    type StreamRuleKind = RuleKind.CLOSED | RuleKind.SINK | RuleKind.LISTENER | RuleKind.COPY | RuleKind.MAP | RuleKind.FOLD | RuleKind.FILTER | RuleKind.MERGE | RuleKind.SELECT | RuleKind.SNAPSHOT | RuleKind.SNAPSHOT_ALL | RuleKind.SNAPSHOT_LIVE | RuleKind.SNAPSHOT_ALL_LIVE | RuleKind.BRANCH_S | RuleKind.BRANCH_ON_S | RuleKind.FLATTEN
+    type StreamRuleKind = RuleKind.CLOSED | RuleKind.SINK | RuleKind.LISTENER | RuleKind.COPY | RuleKind.MAP | RuleKind.FOLD | RuleKind.FILTER | RuleKind.MERGE | RuleKind.MEET | RuleKind.MEET_ALL | RuleKind.SELECT | RuleKind.SNAPSHOT | RuleKind.SNAPSHOT_ALL | RuleKind.SNAPSHOT_LIVE | RuleKind.SNAPSHOT_ALL_LIVE | RuleKind.BRANCH_S | RuleKind.BRANCH_ON_S | RuleKind.FLATTEN
     
     type CellRule<T> = Rule<T, CellRuleKind>
     type StreamRule<T> = Rule<T, StreamRuleKind>
@@ -243,7 +257,7 @@ namespace Furple {
      * Sentinel value indicating that a `_forEach` loop should terminate.
      */
     const BREAK = Symbol();
-    type Break = typeof BREAK;
+    type Break = typeof BREAK
     
     function _forEachSinkParent<T>(rule: Rule<T, RuleKind.SINK>, f: (x: Parent<T>) => void | Break): void | Break {
         const parents = rule.parents;
@@ -265,12 +279,24 @@ namespace Furple {
         const parents = rule.parents;
         for(let i = 0; i < parents.length;) {
             const parent = parents[i].deref();
-            if(parent !== undefined) {
-                if(f(parent) === BREAK) { return BREAK; }
-                ++i;
-            } else {
+            if(parent === undefined) {
                 // delete preserving order
                 parents.splice(i, 1);
+            } else {
+                if(f(parent) === BREAK) { return BREAK; }
+                ++i;
+            }
+        }
+    }
+    
+    function _forEachMeetAllParent<T>(rule: Rule<T, RuleKind.MEET_ALL>, f: (s: ParentStream) => void | Break, _thenClose?: () => void): void | Break {
+        for(const weakParent of rule.parents) {
+            const parent = weakParent.deref();
+            if(parent === undefined) {
+                _thenClose?.();
+                return;
+            } else if(f(parent) === BREAK) {
+                return BREAK;
             }
         }
     }
@@ -319,7 +345,12 @@ namespace Furple {
                 return _forEachSelectParent(rule, f);
             }
             
+            case RuleKind.MEET_ALL: {
+                return _forEachMeetAllParent(rule, f);
+            }
+            
             case RuleKind.MERGE:
+            case RuleKind.MEET:
             case RuleKind.FLATTEN: {
                 const parent1 = rule.parent1.deref(),
                     parent2 = rule.parent2?.deref();
@@ -547,17 +578,45 @@ namespace Furple {
             
             if(close) {
                 _closeNode(this);
-            } else if(rule.kind === RuleKind.MERGE) {
-                const parent1 = rule.parent1.deref(), parent2 = rule.parent2.deref();
-                if(parent1 === undefined || parent1.isClosed()) {
-                    this.rule = {kind: RuleKind.COPY, engine: rule.engine, parent: rule.parent2};
-                } else if(parent2 === undefined || parent2.isClosed()) {
-                    this.rule = {kind: RuleKind.COPY, engine: rule.engine, parent: rule.parent1};
+                return;
+            }
+            
+            switch(rule.kind) {
+                case RuleKind.MERGE: {
+                    const parent1 = rule.parent1.deref(), parent2 = rule.parent2.deref();
+                    if(parent1 === undefined || parent1.isClosed()) {
+                        this.rule = {kind: RuleKind.COPY, engine: rule.engine, parent: rule.parent2};
+                    } else if(parent2 === undefined || parent2.isClosed()) {
+                        this.rule = {kind: RuleKind.COPY, engine: rule.engine, parent: rule.parent1};
+                    }
+                    break;
                 }
-            } else if(rule.kind === RuleKind.SELECT) {
-                // _forEachSelectParent already removed the dropped weakrefs
-                if(rule.parents.length === 1) {
-                    this.rule = {kind: RuleKind.COPY, engine: rule.engine, parent: rule.parents[0]};
+                
+                case RuleKind.MEET: {
+                    const parent1 = rule.parent1.deref(), parent2 = rule.parent2.deref();
+                    if(parent1 === undefined || parent2 === undefined || parent1.isClosed() || parent2.isClosed()) {
+                        _closeNode(this);
+                    }
+                    break;
+                }
+                
+                case RuleKind.MEET_ALL: {
+                    for(const weakParent of rule.parents) {
+                        const parent = weakParent.deref();
+                        if(parent === undefined || parent.isClosed()) {
+                            _closeNode(this);
+                            break;
+                        }
+                    }
+                    break;
+                }
+                
+                case RuleKind.SELECT: {
+                    // _forEachSelectParent already removed the dropped weakrefs
+                    if(rule.parents.length === 1) {
+                        this.rule = {kind: RuleKind.COPY, engine: rule.engine, parent: rule.parents[0]};
+                    }
+                    break;
                 }
             }
         }
@@ -674,7 +733,7 @@ namespace Furple {
             return this.snapLive(p, (s, p) => p ? s : DO_NOT_SEND);
         }
         
-        public merge<U>(otherStream: Stream<U>, f: (a: T, b: U) => T | U): Stream<T | U> {
+        public merge<U>(otherStream: Stream<U>, f: (a: T, b: U) => T | U | DoNotSend): Stream<T | U> {
             const self = this as StreamNode<T>,
                 other = otherStream as StreamNode<U>;
             
@@ -686,7 +745,7 @@ namespace Furple {
             
             const engine = _expectEngine(self);
             if(Config.DEBUG) { _assertOwn(engine, self, other); }
-            return new Node(
+            return new Node<T | U>(
                 {kind: RuleKind.MERGE, engine, parent1: new WeakRef(self), parent2: new WeakRef(other), f},
                 IS_STREAM,
             );
@@ -700,6 +759,22 @@ namespace Furple {
             return this.merge(
                 otherStream,
                 () => { throw new Error('Mutually exclusive streams fired simultaneously'); },
+            );
+        }
+        
+        public meet<U, R>(otherStream: Stream<U>, f: (t: T, u: U) => R | DoNotSend): Stream<R> {
+            const self = this as StreamNode<T>,
+                other = otherStream as StreamNode<U>;
+            
+            if(self.isClosed() || other.isClosed()) {
+                return NEVER;
+            }
+            
+            const engine = _expectEngine(self);
+            if(Config.DEBUG) { _assertOwn(engine, self, other); }
+            return new Node<R>(
+                {kind: RuleKind.MEET, engine, parent1: new WeakRef(self), parent2: new WeakRef(other), f},
+                IS_STREAM,
             );
         }
         
@@ -1035,6 +1110,34 @@ namespace Furple {
                     return s2.newValue === NOT_UPDATED ? s1.newValue as T
                         : s1.newValue === NOT_UPDATED ? s2.newValue as T
                         : rule.f(s1.newValue, s2.newValue);
+                }
+                
+                case RuleKind.MEET: {
+                    const s1 = rule.parent1.deref(), s2 = rule.parent2.deref();
+                    if(s1 === undefined || s2 === undefined) {
+                        _closeNode(node);
+                        return DO_NOT_SEND;
+                    }
+                    
+                    if(Config.DEBUG) { _assertUpdated(s1, s2); }
+                    
+                    return s1.newValue !== NOT_UPDATED && s2.newValue !== NOT_UPDATED
+                        ? rule.f(s1.newValue, s2.newValue)
+                        : DO_NOT_SEND;
+                }
+                
+                case RuleKind.MEET_ALL: {
+                    const args: unknown[] = [];
+                    _forEachMeetAllParent(rule, parent => {
+                        if(parent.newValue === NOT_UPDATED) { return BREAK; }
+                        args.push(parent.newValue);
+                    }, () => {
+                        _closeNode(node);
+                    });
+                    
+                    return args.length === rule.parents.length
+                        ? rule.f(...args)
+                        : DO_NOT_SEND;
                 }
                 
                 case RuleKind.SELECT: {
@@ -1462,6 +1565,26 @@ namespace Furple {
         return new Node<R>(
             {kind: RuleKind.LIFT_ALL, engine, parents, f},
             initialValue,
+        );
+    }
+    
+    /**
+     * Creates a new FRP stream which fires whenever all of the given streams
+     * fire simultaneously. The value sent is determined by applying the
+     * given function to the values sent on these streams.
+     */
+    export function meetAll<T extends Tuple<Stream>, R>(streams: T, f: (...args: Lift<T>) => R | DoNotSend): Stream<R> {
+        const parents: WeakParentStream[] = [];
+        for(const s of streams) {
+            const p = s as StreamNode<unknown>;
+            if(p.isClosed()) { return NEVER; }
+            parents.push(new WeakRef(p));
+        }
+        
+        const engine = _expectEngine(streams[0] as StreamNode<unknown>);
+        return new Node<R>(
+            {kind: RuleKind.MEET_ALL, engine, parents, f},
+            IS_STREAM,
         );
     }
     
