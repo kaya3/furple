@@ -279,24 +279,12 @@ namespace Furple {
         const parents = rule.parents;
         for(let i = 0; i < parents.length;) {
             const parent = parents[i].deref();
-            if(parent === undefined) {
-                // delete preserving order
-                parents.splice(i, 1);
-            } else {
+            if(parent !== undefined) {
                 if(f(parent) === BREAK) { return BREAK; }
                 ++i;
-            }
-        }
-    }
-    
-    function _forEachMeetAllParent<T>(rule: Rule<T, RuleKind.MEET_ALL>, f: (s: ParentStream) => void | Break, _thenClose?: () => void): void | Break {
-        for(const weakParent of rule.parents) {
-            const parent = weakParent.deref();
-            if(parent === undefined) {
-                _thenClose?.();
-                return;
-            } else if(f(parent) === BREAK) {
-                return BREAK;
+            } else {
+                // delete preserving order
+                parents.splice(i, 1);
             }
         }
     }
@@ -346,7 +334,13 @@ namespace Furple {
             }
             
             case RuleKind.MEET_ALL: {
-                return _forEachMeetAllParent(rule, f);
+                for(const weakParent of rule.parents) {
+                    const parent = weakParent.deref();
+                    if(parent !== undefined) {
+                        if(f(parent) === BREAK) { return BREAK; }
+                    }
+                }
+                return;
             }
             
             case RuleKind.MERGE:
@@ -1114,7 +1108,7 @@ namespace Furple {
                 
                 case RuleKind.MEET: {
                     const s1 = rule.parent1.deref(), s2 = rule.parent2.deref();
-                    if(s1 === undefined || s2 === undefined) {
+                    if(s1 === undefined || s2 === undefined || s1.isClosed() || s2.isClosed()) {
                         _closeNode(node);
                         return DO_NOT_SEND;
                     }
@@ -1128,16 +1122,18 @@ namespace Furple {
                 
                 case RuleKind.MEET_ALL: {
                     const args: unknown[] = [];
-                    _forEachMeetAllParent(rule, parent => {
-                        if(parent.newValue === NOT_UPDATED) { return BREAK; }
+                    for(const weakParent of rule.parents) {
+                        const parent = weakParent.deref();
+                        if(parent === undefined || parent.isClosed()) {
+                            _closeNode(node);
+                            return DO_NOT_SEND;
+                        } else if(parent.newValue === NOT_UPDATED) {
+                            return DO_NOT_SEND;
+                        }
                         args.push(parent.newValue);
-                    }, () => {
-                        _closeNode(node);
-                    });
+                    }
                     
-                    return args.length === rule.parents.length
-                        ? rule.f(...args)
-                        : DO_NOT_SEND;
+                    return rule.f(...args);
                 }
                 
                 case RuleKind.SELECT: {
