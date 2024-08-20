@@ -6,5 +6,4 @@
         "lib": ["ESNext", "DOM"],
     },
     "include": ["src/**/*"],
-    "exclude": ["src/config-release.d.ts"],
 }

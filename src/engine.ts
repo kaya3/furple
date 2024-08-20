@@ -465,7 +465,7 @@ namespace Furple {
             });
             this.#fixDepth();
             
-            if(Config.DEBUG) {
+            if(DEBUG) {
                 this.value = _freezeValue(value);
             }
         }
@@ -521,7 +521,7 @@ namespace Furple {
         removeNonNotifiableChild<U>(child: Node<U>): void {
             if(child.rule.kind === RuleKind.BRANCH_ON_C || child.rule.kind === RuleKind.BRANCH_ON_S) {
                 // BRANCH_ON nodes don't register themselves as a notifiable dependency
-                if(Config.DEBUG) {
+                if(DEBUG) {
                     if(child.rule.parent.deref() !== this) {
                         throw new AssertionError(`BRANCH_ON node tried to deregister from wrong parent`, [this, child]);
                     } else if(this.rule.kind !== RuleKind.BRANCH_C && this.rule.kind !== RuleKind.BRANCH_S && this.rule.kind !== RuleKind.CLOSED) {
@@ -623,7 +623,7 @@ namespace Furple {
         }
         
         public observe(f: (x: T) => void): ListenerToken {
-            if(Config.DEBUG) { _assertCell(this); }
+            if(DEBUG) { _assertCell(this); }
             
             f(this.value as T);
             return this.listen(f);
@@ -647,14 +647,14 @@ namespace Furple {
         }
         
         public sample(): T {
-            if(Config.DEBUG) { _assertCell(this); }
+            if(DEBUG) { _assertCell(this); }
             
             const engine = this.rule.engine;
             return engine !== undefined ? engine.sample(this) : this.value as T;
         }
         
         public setEqualityFunction(eq: (x: T, y: T) => boolean): this {
-            if(Config.DEBUG) { _assertCell(this); }
+            if(DEBUG) { _assertCell(this); }
             
             _forEachChild(this, () => {
                 throw new Error(`Equality function should only be set when the cell is originally created`);
@@ -678,12 +678,12 @@ namespace Furple {
                 parent2 = otherCell as CellNode<U>,
                 engine = parent1.rule.engine ?? parent2.rule.engine;
             
-            if(Config.DEBUG) { _assertCell<T>(parent1); _assertCell<U>(parent2); }
+            if(DEBUG) { _assertCell<T>(parent1); _assertCell<U>(parent2); }
             
             const intialValue = f(parent1.value, parent2.value);
             if(engine === undefined) { return constant(intialValue); }
             
-            if(Config.DEBUG) { _assertOwn(engine, parent1, parent2); }
+            if(DEBUG) { _assertOwn(engine, parent1, parent2); }
             return new Node({kind: RuleKind.LIFT, engine, parent1, parent2, f}, intialValue);
         }
         
@@ -738,7 +738,7 @@ namespace Furple {
             }
             
             const engine = _expectEngine(self);
-            if(Config.DEBUG) { _assertOwn(engine, self, other); }
+            if(DEBUG) { _assertOwn(engine, self, other); }
             return new Node<T | U>(
                 {kind: RuleKind.MERGE, engine, parent1: new WeakRef(self), parent2: new WeakRef(other), f},
                 IS_STREAM,
@@ -765,7 +765,7 @@ namespace Furple {
             }
             
             const engine = _expectEngine(self);
-            if(Config.DEBUG) { _assertOwn(engine, self, other); }
+            if(DEBUG) { _assertOwn(engine, self, other); }
             return new Node<R>(
                 {kind: RuleKind.MEET, engine, parent1: new WeakRef(self), parent2: new WeakRef(other), f},
                 IS_STREAM,
@@ -879,7 +879,7 @@ namespace Furple {
             const nodes = this.#nodes,
                 depth = node.depth;
             
-            if(Config.DEBUG && depth < this.#currentDepth) {
+            if(DEBUG && depth < this.#currentDepth) {
                 throw new AssertionError(`Enqueued node out of order (expected depth >= ${this.#currentDepth}, was ${depth})`, node);
             }
             
@@ -986,7 +986,7 @@ namespace Furple {
             if(node.value !== IS_STREAM && node.equalityFunc(node.value, value)) { return; }
             
             const rule = node.rule;
-            if(Config.DEBUG) {
+            if(DEBUG) {
                 if(rule.kind === RuleKind.CLOSED) {
                     throw new AssertionError(`Cannot send to closed node`, node);
                 } else if(rule.kind !== RuleKind.SINK && node.newValue !== NOT_UPDATED) {
@@ -1021,7 +1021,7 @@ namespace Furple {
                 
                 case RuleKind.SINK: {
                     if(rule.parents === undefined) {
-                        if(Config.DEBUG && node.newValue === NOT_UPDATED) {
+                        if(DEBUG && node.newValue === NOT_UPDATED) {
                             throw new AssertionError(`Stream was not sent anything`, node);
                         }
                         return node.newValue as T;
@@ -1042,7 +1042,7 @@ namespace Furple {
                 case RuleKind.COPY: {
                     const of = rule.parent.deref();
                     if(of === undefined) { _closeNode(node); return DO_NOT_SEND; }
-                    if(Config.DEBUG) { _assertUpdated(of); }
+                    if(DEBUG) { _assertUpdated(of); }
                     
                     return of.newValue as T;
                 }
@@ -1050,7 +1050,7 @@ namespace Furple {
                 case RuleKind.MAP: {
                     const of = rule.parent.deref();
                     if(of === undefined) { _closeNode(node); return DO_NOT_SEND; }
-                    if(Config.DEBUG) { _assertUpdated(of); }
+                    if(DEBUG) { _assertUpdated(of); }
                     
                     return rule.f(of.newValue);
                 }
@@ -1058,7 +1058,7 @@ namespace Furple {
                 case RuleKind.FILTER: {
                     const stream = rule.parent.deref();
                     if(stream === undefined) { _closeNode(node); return DO_NOT_SEND; }
-                    if(Config.DEBUG) { _assertUpdated(stream); }
+                    if(DEBUG) { _assertUpdated(stream); }
                     
                     const value = stream.newValue as T;
                     return rule.f(value) ? value : DO_NOT_SEND;
@@ -1067,7 +1067,7 @@ namespace Furple {
                 case RuleKind.FOLD: {
                     const stream = rule.parent.deref();
                     if(stream === undefined) { _closeNode(node); return DO_NOT_SEND; }
-                    if(Config.DEBUG) {
+                    if(DEBUG) {
                         _assertUpdated(stream);
                         _assertCell(node);
                     }
@@ -1076,13 +1076,13 @@ namespace Furple {
                 }
                 
                 case RuleKind.LIFT: {
-                    if(Config.DEBUG) { _assertUpdated(rule.parent1, rule.parent2); }
+                    if(DEBUG) { _assertUpdated(rule.parent1, rule.parent2); }
                     
                     return rule.f(_mostRecentValue(rule.parent1), _mostRecentValue(rule.parent2));
                 }
                 
                 case RuleKind.LIFT_ALL: {
-                    if(Config.DEBUG) { _assertUpdated(...rule.parents); }
+                    if(DEBUG) { _assertUpdated(...rule.parents); }
                     
                     const args = rule.parents.map(_mostRecentValue);
                     return rule.f(...args);
@@ -1099,7 +1099,7 @@ namespace Furple {
                         return this.#recomputeNode(node);
                     }
                     
-                    if(Config.DEBUG) { _assertUpdated(s1, s2); }
+                    if(DEBUG) { _assertUpdated(s1, s2); }
                     
                     return s2.newValue === NOT_UPDATED ? s1.newValue as T
                         : s1.newValue === NOT_UPDATED ? s2.newValue as T
@@ -1113,7 +1113,7 @@ namespace Furple {
                         return DO_NOT_SEND;
                     }
                     
-                    if(Config.DEBUG) { _assertUpdated(s1, s2); }
+                    if(DEBUG) { _assertUpdated(s1, s2); }
                     
                     return s1.newValue !== NOT_UPDATED && s2.newValue !== NOT_UPDATED
                         ? rule.f(s1.newValue, s2.newValue)
@@ -1144,7 +1144,7 @@ namespace Furple {
                             return BREAK;
                         }
                     });
-                    if(Config.DEBUG && newValue === DO_NOT_SEND) {
+                    if(DEBUG && newValue === DO_NOT_SEND) {
                         throw new AssertionError(`At least one parent should have been updated`, rule);
                     }
                     return newValue;
@@ -1153,7 +1153,7 @@ namespace Furple {
                 case RuleKind.SNAPSHOT: {
                     const stream = rule.parent.deref();
                     if(stream === undefined) { _closeNode(node); return DO_NOT_SEND; }
-                    if(Config.DEBUG) { _assertUpdated(stream); }
+                    if(DEBUG) { _assertUpdated(stream); }
                     
                     // snapshot always sees cell values from the start of the transaction
                     return rule.f(stream.newValue, rule.cell.value);
@@ -1162,7 +1162,7 @@ namespace Furple {
                 case RuleKind.SNAPSHOT_ALL: {
                     const stream = rule.parent.deref();
                     if(stream === undefined) { _closeNode(node); return DO_NOT_SEND; }
-                    if(Config.DEBUG) { _assertUpdated(stream); }
+                    if(DEBUG) { _assertUpdated(stream); }
                     
                     // snapshot always sees cell values from the start of the transaction
                     const args = rule.cells.map(c => c.value);
@@ -1172,7 +1172,7 @@ namespace Furple {
                 case RuleKind.SNAPSHOT_LIVE: {
                     const stream = rule.parent.deref();
                     if(stream === undefined) { _closeNode(node); return DO_NOT_SEND; }
-                    if(Config.DEBUG) { _assertUpdated(stream); }
+                    if(DEBUG) { _assertUpdated(stream); }
                     
                     return rule.f(stream.newValue, _mostRecentValue(rule.cell));
                 }
@@ -1180,7 +1180,7 @@ namespace Furple {
                 case RuleKind.SNAPSHOT_ALL_LIVE: {
                     const stream = rule.parent.deref();
                     if(stream === undefined) { _closeNode(node); return DO_NOT_SEND; }
-                    if(Config.DEBUG) { _assertUpdated(stream); }
+                    if(DEBUG) { _assertUpdated(stream); }
                     
                     const args = rule.cells.map(_mostRecentValue);
                     return rule.f(stream.newValue, ...args);
@@ -1189,7 +1189,7 @@ namespace Furple {
                 case RuleKind.BRANCH_C: {
                     const parent = rule.parent.deref();
                     if(parent === undefined) { _closeNode(node); return DO_NOT_SEND; }
-                    if(Config.DEBUG) { _assertUpdated(parent); }
+                    if(DEBUG) { _assertUpdated(parent); }
                     
                     // update two boolean cells
                     const newValue = parent.newValue as T,
@@ -1207,7 +1207,7 @@ namespace Furple {
                 case RuleKind.BRANCH_S: {
                     const parent = rule.parent.deref();
                     if(parent === undefined) { _closeNode(node); return DO_NOT_SEND; }
-                    if(Config.DEBUG) { _assertUpdated(parent); }
+                    if(DEBUG) { _assertUpdated(parent); }
                     
                     // update just one stream
                     const newValue = parent.newValue as T,
@@ -1230,7 +1230,7 @@ namespace Furple {
                     
                     const oldSource = rule.parent2?.deref(),
                         newSource = _mostRecentValue(container) as CellNode<T> | undefined;
-                    if(Config.DEBUG) {
+                    if(DEBUG) {
                         if(oldSource !== undefined && !(oldSource instanceof Node)) {
                             throw new AssertionError(`Old source must be a node`, oldSource);
                         } else if(newSource !== undefined) {
@@ -1272,7 +1272,7 @@ namespace Furple {
         public send<T>(sink: Sink<T>, value: T): void {
             const node = sink as Node<T>;
             
-            if(Config.DEBUG) { _assertOwn(this, node); }
+            if(DEBUG) { _assertOwn(this, node); }
             
             if(node.isClosed()) {
                 throw new Error(`Cannot send to this sink; it is closed`);
@@ -1339,7 +1339,7 @@ namespace Furple {
                 
                 // dispatch events to listeners
                 for(const node of this.#dirty) {
-                    if(Config.DEBUG) { _assertUpdated(node as Parent<unknown>); }
+                    if(DEBUG) { _assertUpdated(node as Parent<unknown>); }
                     
                     if(node.rule.kind === RuleKind.LISTENER) {
                         node.rule.f(node.newValue);
@@ -1378,7 +1378,7 @@ namespace Furple {
             }
             
             const node = cell as Node<T>;
-            if(Config.DEBUG) { _assertCell(node); }
+            if(DEBUG) { _assertCell(node); }
             return node.value as T;
         }
         
@@ -1414,7 +1414,7 @@ namespace Furple {
             throw new Error(`Cannot connect; sink is already closed`);
         }
         
-        if(Config.DEBUG) { _assertOwn(engine, source); }
+        if(DEBUG) { _assertOwn(engine, source); }
         
         if(engine.isBusy()) {
             // this operation cannot be allowed unless idle, because it
@@ -1489,7 +1489,7 @@ namespace Furple {
             engine = stream.rule.engine;
         if(engine === undefined) { return NEVER; }
         
-        if(Config.DEBUG) { _assertOwn(engine, cell); }
+        if(DEBUG) { _assertOwn(engine, cell); }
         
         const kind = live ? RuleKind.SNAPSHOT_LIVE : RuleKind.SNAPSHOT;
         return new Node({kind, engine, parent: new WeakRef(stream), cell, f}, IS_STREAM);
@@ -1507,7 +1507,7 @@ namespace Furple {
             engine = stream.rule.engine;
         if(engine === undefined) { return NEVER; }
         
-        if(Config.DEBUG) { _assertOwn(engine, ...cells); }
+        if(DEBUG) { _assertOwn(engine, ...cells); }
         
         const kind = live ? RuleKind.SNAPSHOT_ALL_LIVE : RuleKind.SNAPSHOT_ALL;
         return new Node({kind, engine, parent: new WeakRef(stream), cells, f}, IS_STREAM);
@@ -1557,7 +1557,7 @@ namespace Furple {
         const initialValue = f(...values);
         if(engine === undefined) { return constant(initialValue); }
         
-        if(Config.DEBUG) { _assertOwn(engine, ...parents); }
+        if(DEBUG) { _assertOwn(engine, ...parents); }
         return new Node<R>(
             {kind: RuleKind.LIFT_ALL, engine, parents, f},
             initialValue,
@@ -1600,7 +1600,7 @@ namespace Furple {
         }
         
         const engine = _expectEngine(parents[0]);
-        if(Config.DEBUG) { _assertOwn(engine, ...parents); }
+        if(DEBUG) { _assertOwn(engine, ...parents); }
         
         return new Node(
             {kind: RuleKind.SELECT, engine, parents: parents.map(p => new WeakRef(p))},
@@ -1647,7 +1647,7 @@ namespace Furple {
             engine = node.rule.engine;
         if(engine === undefined) { return nested ?? UNDEFINED; }
         
-        if(Config.DEBUG && nested !== undefined && !(nested instanceof Node)) {
+        if(DEBUG && nested !== undefined && !(nested instanceof Node)) {
             throw new AssertionError(`Inner value must be cell or stream`, nested);
         }
         
