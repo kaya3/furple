@@ -304,6 +304,7 @@ Punyt.test(class NodeTest {
     basicListener() {
         const frp = Furple.engine();
         const sink = frp.sink();
+        Assert.isTrue(Furple.isStream(sink), 'Sink should be a stream');
         let result = 'foo';
         sink.listen(s => result = s);
         sink.send('bar');
@@ -313,6 +314,7 @@ Punyt.test(class NodeTest {
         const frp = Furple.engine();
         const sink = frp.sink();
         const holder = sink.hold('foo');
+        Assert.isTrue(Furple.isCell(holder), 'Holder should be a cell');
         Assert.equal('foo', holder.sample(), 'Holder should have intial value');
         sink.send('bar');
         Assert.equal('bar', holder.sample(), 'Holder should receive new value');
@@ -321,6 +323,7 @@ Punyt.test(class NodeTest {
         const frp = Furple.engine();
         const cell = frp.cell(4);
         const mapped = cell.map(x => x + 1);
+        Assert.isTrue(Furple.isCell(mapped), 'Mapped should be a cell');
         Assert.equal(5, mapped.sample(), 'Mapped cell should have initial value');
         cell.send(7);
         Assert.equal(8, mapped.sample(), 'Mapped cell should have updated value');
@@ -329,6 +332,7 @@ Punyt.test(class NodeTest {
         const frp = Furple.engine();
         const sink = frp.sink();
         const mapped = sink.map(x => x + 1);
+        Assert.isTrue(Furple.isStream(mapped), 'Mapped should be a stream');
         let result = 0;
         mapped.listen(x => result = x);
         sink.send(4);
@@ -338,6 +342,7 @@ Punyt.test(class NodeTest {
         const frp = Furple.engine();
         const sink = frp.sink();
         const filtered = sink.filter(x => x > 0);
+        Assert.isTrue(Furple.isStream(filtered), 'Filtered should be a stream');
         let result = 0;
         filtered.listen(x => result = x);
         sink.send(4);
@@ -350,6 +355,7 @@ Punyt.test(class NodeTest {
         const a = frp.cell(4);
         const b = frp.cell(5);
         const lifted = a.lift(b, (x, y) => x + y);
+        Assert.isTrue(Furple.isCell(lifted), 'Lifted should be a cell');
         Assert.equal(9, lifted.sample(), 'Lifted cell should have initial value');
         a.send(3);
         Assert.equal(8, lifted.sample(), 'Lifted cell should have updated value');
@@ -361,6 +367,7 @@ Punyt.test(class NodeTest {
         const c = frp.cell(3);
         const d = frp.cell(4);
         const lifted = Furple.liftAll([a, b, c, d], (x, y, z, w) => x + y + z + w);
+        Assert.isTrue(Furple.isCell(lifted), 'Lifted should be a cell');
         Assert.equal(10, lifted.sample(), 'Lifted cell should have initial value');
         d.send(10);
         Assert.equal(16, lifted.sample(), 'Lifted cell should have updated value');
@@ -376,6 +383,7 @@ Punyt.test(class NodeTest {
         const a = frp.sink();
         const b = frp.sink();
         const merged = a.merge(b, (x, y) => x + y);
+        Assert.isTrue(Furple.isStream(merged), 'Merged should be a stream');
         let result = 0;
         merged.listen(x => result = x);
         a.send(3);
@@ -394,6 +402,7 @@ Punyt.test(class NodeTest {
         const b = frp.sink();
         const c = frp.sink();
         const select = Furple.select(a, b, c);
+        Assert.isTrue(Furple.isStream(select), 'Select should be a stream');
         let result = 'nothing';
         select.listen(x => result = x);
         frp.run(() => {
@@ -406,8 +415,11 @@ Punyt.test(class NodeTest {
         const frp = Furple.engine();
         const cell = frp.cell('foo');
         const branched = Furple.branch(cell);
+        Assert.isTrue(Furple.isCell(branched), 'Branched should be a cell');
         const cell1 = branched.when('foo');
         const cell2 = branched.when('bar');
+        Assert.isTrue(Furple.isCell(cell1), 'Branch should be a cell');
+        Assert.isTrue(Furple.isCell(cell2), 'Other branch should also be a cell');
         Assert.isTrue(cell1.sample(), '"foo" branch should be true');
         Assert.isFalse(cell2.sample(), '"bar" branch should be false');
         cell.send('bar');
@@ -423,6 +435,8 @@ Punyt.test(class NodeTest {
         const branched = Furple.branch(sink);
         const stream1 = branched.when('foo');
         const stream2 = branched.when('bar');
+        Assert.isTrue(Furple.isStream(stream1), 'Branch should be a stream');
+        Assert.isTrue(Furple.isStream(stream2), 'Other branch should also be a stream');
         let result = 'nothing triggered';
         stream1.listen(() => result = 'foo triggered');
         stream2.listen(() => result = 'bar triggered');

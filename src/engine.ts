@@ -330,7 +330,7 @@ namespace Furple {
             }
             
             case RuleKind.SELECT: {
-                return _forEachSelectParent(rule, f);
+                return _forEachSelectParent<unknown>(rule, f);
             }
             
             case RuleKind.MEET_ALL: {
@@ -1531,6 +1531,22 @@ namespace Furple {
     export const UNDEFINED = constant(undefined);
     
     /**
+     * Indicates whether the given unknown value is a cell. Can be used for
+     * type narrowing of unions, e.g. `T | Cell<T>`.
+     */
+    export function isCell(value: unknown): value is Cell<unknown> {
+        return value instanceof Node && value.value !== IS_STREAM;
+    }
+    
+    /**
+     * Indicates whether the given unknown value is a stream. Can be used for
+     * type narrowing of unions, e.g. `T | Stream<T>`.
+     */
+    export function isStream(value: unknown): value is Stream<unknown> {
+        return value instanceof Node && value.value === IS_STREAM;
+    }
+    
+    /**
      * Constructs a new FRP cell whose value is determined by applying the
      * given function to these cells' values. The function must be pure.
      */
@@ -1586,7 +1602,7 @@ namespace Furple {
     
     /**
      * Creates a new FRP stream which fires whenever any of the given streams
-     * fires. The streams have priority according to the order they are given,
+     * fire. The streams have priority according to the order they are given,
      * so that if multiple fire simultaneously, the value is taken from the
      * earliest stream in the argument list which fired.
      */

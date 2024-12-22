@@ -101,6 +101,16 @@ declare namespace Furple {
      */
     const UNDEFINED: Cell<undefined>;
     /**
+     * Indicates whether the given unknown value is a cell. Can be used for
+     * type narrowing of unions, e.g. `T | Cell<T>`.
+     */
+    function isCell(value: unknown): value is Cell<unknown>;
+    /**
+     * Indicates whether the given unknown value is a stream. Can be used for
+     * type narrowing of unions, e.g. `T | Stream<T>`.
+     */
+    function isStream(value: unknown): value is Stream<unknown>;
+    /**
      * Constructs a new FRP cell whose value is determined by applying the
      * given function to these cells' values. The function must be pure.
      */
@@ -114,7 +124,7 @@ declare namespace Furple {
     function meetAll<T extends Tuple<Stream>, R>(streams: T, f: (...args: Lift<T>) => R | DoNotSend): Stream<R>;
     /**
      * Creates a new FRP stream which fires whenever any of the given streams
-     * fires. The streams have priority according to the order they are given,
+     * fire. The streams have priority according to the order they are given,
      * so that if multiple fire simultaneously, the value is taken from the
      * earliest stream in the argument list which fired.
      */

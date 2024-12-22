@@ -1122,6 +1122,14 @@ var Furple;
   }
   Furple2.constant = constant;
   Furple2.UNDEFINED = constant(void 0);
+  function isCell(value) {
+    return value instanceof Node && value.value !== IS_STREAM;
+  }
+  Furple2.isCell = isCell;
+  function isStream(value) {
+    return value instanceof Node && value.value === IS_STREAM;
+  }
+  Furple2.isStream = isStream;
   function liftAll(cells, f) {
     const parents = cells;
     let engine2 = void 0;
