@@ -434,9 +434,17 @@ var Furple;
       return engine2 !== void 0 ? new Node({ kind: 5, engine: engine2, parent: new WeakRef(self), f }, IS_STREAM) : Furple2.NEVER;
     }
     gate(p) {
+      const _p = p;
+      if (_p.isClosed()) {
+        return p.sample() ? this : Furple2.NEVER;
+      }
       return this.filter(() => p.sample());
     }
     gateLive(p) {
+      const _p = p;
+      if (_p.isClosed()) {
+        return p.sample() ? this : Furple2.NEVER;
+      }
       return this.snapLive(p, (s, p2) => p2 ? s : Furple2.DO_NOT_SEND);
     }
     merge(otherStream, f) {

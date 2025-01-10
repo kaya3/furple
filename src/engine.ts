@@ -720,10 +720,20 @@ namespace Furple {
         }
         
         public gate(p: Cell<boolean>): Stream<T> {
+            const _p = p as CellNode<boolean>;
+            if(_p.isClosed()) {
+                return p.sample() ? this : NEVER;
+            }
+            
             return this.filter(() => p.sample());
         }
         
         public gateLive(p: Cell<boolean>): Stream<T> {
+            const _p = p as CellNode<boolean>;
+            if(_p.isClosed()) {
+                return p.sample() ? this : NEVER;
+            }
+            
             return this.snapLive(p, (s, p) => p ? s : DO_NOT_SEND);
         }
         

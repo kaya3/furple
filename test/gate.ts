@@ -35,6 +35,58 @@ Punyt.test(class GateTest {
         Assert.equal(3, result, 'Gated stream should not receive event when predicate is false');
     }
     
+    gateConstantTrue(): void {
+        const frp = Furple.engine();
+        
+        const sink = frp.sink<number>();
+        const gated = sink.gate(Furple.constant(true));
+        
+        let result = 0;
+        gated.listen(x => result = x);
+        
+        sink.send(3);
+        Assert.equal(3, result, 'Gated stream should receive event when predicate is true');
+    }
+    
+    gateConstantFalse(): void {
+        const frp = Furple.engine();
+        
+        const sink = frp.sink<number>();
+        const gated = sink.gate(Furple.constant(false));
+        
+        let result = 0;
+        gated.listen(x => result = x);
+        
+        sink.send(3);
+        Assert.equal(0, result, 'Gated stream should not receive event when predicate is false');
+    }
+    
+    gateLiveConstantTrue(): void {
+        const frp = Furple.engine();
+        
+        const sink = frp.sink<number>();
+        const gated = sink.gateLive(Furple.constant(true));
+        
+        let result = 0;
+        gated.listen(x => result = x);
+        
+        sink.send(3);
+        Assert.equal(3, result, 'Gated stream should receive event when predicate is true');
+    }
+    
+    gateLiveConstantFalse(): void {
+        const frp = Furple.engine();
+        
+        const sink = frp.sink<number>();
+        const gated = sink.gateLive(Furple.constant(false));
+        
+        let result = 0;
+        gated.listen(x => result = x);
+        
+        sink.send(3);
+        Assert.equal(0, result, 'Gated stream should not receive event when predicate is false');
+    }
+    
     gatePriority(): void {
         const frp = Furple.engine();
         
