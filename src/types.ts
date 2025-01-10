@@ -9,7 +9,15 @@ namespace Furple {
          * cell's value. Changes only occur at the end of FRP transactions, and
          * the callback must not perform operations on the same FRP engine.
          */
-        observe(f: (x: T) => void): void;
+        observe(f: (x: T) => void): ListenerToken;
+        
+        /**
+         * Registers a callback function which will be called on any future
+         * changes of this cell's value. Changes only occur at the end of FRP
+         * transactions, and the callback must not perform operations on the
+         * same FRP engine.
+         */
+        listen(f: (x: T) => void): ListenerToken;
         
         /**
          * Gets the current value of this cell. This method should normally be
@@ -84,7 +92,7 @@ namespace Furple {
          * transactions, and the callback must not perform operations on the
          * same FRP engine.
          */
-        listen(f: (x: T) => void): void;
+        listen(f: (x: T) => void): ListenerToken;
         
         /**
          * Sets a name for this stream. Useful for debugging.
@@ -338,8 +346,9 @@ namespace Furple {
     }
     
     /**
-     * A listener token, returned by the `Stream.listen()` or `Cell.observe()`
-     * methods, representing a listener from outside of the FRP engine.
+     * A listener token, returned by the `Stream.listen()`, `Cell.observe()` or
+     * `Cell.listen()` methods, representing a listener from outside of the FRP
+     * engine.
      * 
      * The listener will continue receiving events until the `close()` method
      * is called on this token.
@@ -401,4 +410,9 @@ namespace Furple {
     export type Lift<T extends Tuple<Cell<unknown> | Stream<unknown>>> = {
         [I in keyof T]: T[I] extends Cell<infer U> ? U : never
     }
+    
+    /**
+     * Convenience type for either a raw value or a cell.
+     */
+    export type CellOr<T> = T | Cell<T>
 }
